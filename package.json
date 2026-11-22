@@ -1,0 +1,23 @@
+{
+  "name": "cargo-pilot",
+  "version": "1.0.0",
+  "description": "Cargo Pilot — gioco di volo e dogana in terminale, giocabile dal browser",
+  "main": "game.js",
+  "scripts": {
+    "start": "node game.js",
+    "game": "node game.js",
+    "preview": "node tools/preview-sprites.js",
+    "serve": "node web/server.js",
+    "test": "node game.js < /dev/null"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "node-pty": "^1.0.0",
+    "ws": "^8.18.0"
+  },
+  "license": "MIT",
+  "private": true
+}
