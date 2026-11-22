@@ -48,7 +48,9 @@ async function quizPhase(rl, level) {
   console.log(ui.dim('Rispondi bene e otterrai uno sconto sulle tasse di destinazione.'));
   let ok = 0;
   let ko = 0;
-  for (const qi of level.quiz) {
+  // Ordine casuale: ogni volo pone domande diverse anche a parità di livello.
+  const order = level.quiz.slice().sort(() => Math.random() - 0.5);
+  for (const qi of order) {
     const q = QUESTIONS[qi];
     const idx = await ui.menu(rl, q.text, q.opts);
     if (idx === q.ans) {
@@ -195,12 +197,17 @@ async function playLevel(rl, state, level) {
     await ui.sleep(450);
   }
 
+  // Valori di mercato variabili: stessi listini di base, prezzi diversi ogni run.
+  const cargoOpts = level.cargo.map((c) => {
+    const m = 0.82 + Math.random() * 0.36;
+    return Object.assign({}, c, { value: Math.round((c.value * m) / 50) * 50 });
+  });
   const cargoIdx = await ui.menu(
     rl,
     `\nCONTRATTO DI ${level.from} -> ${level.to}: scegli il carico`,
-    level.cargo.map((c) => `${c.name} — ${c.value} €${c.fragile ? ui.dim(' (fragile)') : ''}`)
+    cargoOpts.map((c) => `${c.name} — ${c.value} €${c.fragile ? ui.dim(' (fragile)') : ''}`)
   );
-  const cargo = level.cargo[cargoIdx];
+  const cargo = cargoOpts[cargoIdx];
   const market = 0.9 + Math.random() * 0.25;
   const value = contractValue(state.sponsor, cargo, market);
   console.log(
@@ -211,15 +218,16 @@ async function playLevel(rl, state, level) {
   }
   await ui.sleep(500);
 
+  const depList = level.dep.slice().sort(() => Math.random() - 0.5);
   const depIdx = await ui.menu(
     rl,
     `\nSCEGLI L'AEROPARTO DI PARTENZA DA ${level.from}`,
-    level.dep.map(
+    depList.map(
       (d) =>
         `${d.name} — ${d.len} m — ${d.note} — vento x${d.windMult} — carburante x${d.fuelMult}`
     )
   );
-  const dep = level.dep[depIdx];
+  const dep = depList[depIdx];
 
   const flight = await fly({
     hull: state.hull,

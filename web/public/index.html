@@ -21,7 +21,7 @@
     header {
       width: 100%;
       max-width: 1200px;
-      padding: 18px 16px 8px;
+      padding: 14px 16px 6px;
       display: flex;
       align-items: baseline;
       justify-content: space-between;
@@ -30,7 +30,7 @@
     }
     h1 {
       margin: 0;
-      font-size: 20px;
+      font-size: 18px;
       letter-spacing: 0.14em;
       color: #ffd866;
       text-transform: uppercase;
@@ -39,22 +39,26 @@
     #term-wrap {
       width: 100%;
       max-width: 1200px;
-      padding: 8px 16px 4px;
+      padding: 6px 12px 4px;
+      overflow-x: auto;
+      overflow-y: hidden;
     }
     #terminal {
       border: 1px solid #2a3441;
       border-radius: 8px;
-      padding: 8px;
+      padding: 6px;
       background: #000;
       box-shadow: 0 10px 40px rgba(0,0,0,.45);
+      display: inline-block;
+      line-height: 1;
     }
     footer {
       width: 100%;
       max-width: 1200px;
-      padding: 10px 16px 24px;
+      padding: 8px 16px 20px;
       font-size: 12px;
       color: #8a93a2;
-      line-height: 1.6;
+      line-height: 1.5;
     }
     footer code { color: #ffd866; }
     #status { color: #7fd787; }
@@ -73,13 +77,17 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
   <script>
+    // Dimensione FISSA: deve combaciare con il PTY del server (web/server.js).
+    // Mai cambiare cols/rows dopo l'avvio: solo il font scala per stare nel viewport.
+    const COLS = 160;
+    const ROWS = 42;
+
     const statusEl = document.getElementById('status');
     const term = new Terminal({
-      cols: 160,
-      rows: 42,
-      fontSize: 10,
+      cols: COLS,
+      rows: ROWS,
+      fontSize: 11,
       fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
       cursorBlink: true,
       letterSpacing: 0,
@@ -91,24 +99,69 @@
         selectionBackground: '#3a4657',
       },
       allowProposedApi: true,
+      scrollback: 0,
     });
-    const fit = new FitAddon.FitAddon();
-    term.loadAddon(fit);
     term.open(document.getElementById('terminal'));
-    fit.fit();
     term.focus();
+
+    function measureCell(fontSize) {
+      const probe = document.createElement('canvas').getContext('2d');
+      probe.font = fontSize + 'px ui-monospace, Menlo, Consolas, monospace';
+      const w = probe.measureText('M').width || fontSize * 0.6;
+      return { w: w, h: fontSize };
+    }
+
+    function fitFont() {
+      const wrap = document.getElementById('term-wrap');
+      const header = document.querySelector('header');
+      const footer = document.querySelector('footer');
+      const padX = 28;
+      const padY = 36;
+      const maxW = Math.max(320, wrap.clientWidth - padX);
+      const maxH = Math.max(
+        240,
+        window.innerHeight - header.offsetHeight - footer.offsetHeight - padY
+      );
+      let best = 6;
+      for (let s = 18; s >= 6; s -= 0.5) {
+        const m = measureCell(s);
+        if (COLS * m.w <= maxW && ROWS * m.h <= maxH) {
+          best = s;
+          break;
+        }
+      }
+      if (term.options.fontSize !== best) term.options.fontSize = best;
+    }
+
+    fitFont();
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(proto + '://' + location.host + '/term');
-    ws.onopen = () => { statusEl.textContent = 'connesso'; statusEl.classList.remove('err'); };
-    ws.onclose = () => { statusEl.textContent = 'disconnesso — ricarica la pagina'; statusEl.classList.add('err'); };
-    ws.onerror = () => { statusEl.textContent = 'errore di rete'; statusEl.classList.add('err'); };
-    ws.onmessage = (ev) => term.write(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data));
+    ws.onopen = () => {
+      statusEl.textContent = 'connesso';
+      statusEl.classList.remove('err');
+      term.focus();
+    };
+    ws.onclose = () => {
+      statusEl.textContent = 'disconnesso — ricarica la pagina';
+      statusEl.classList.add('err');
+    };
+    ws.onerror = () => {
+      statusEl.textContent = 'errore di rete';
+      statusEl.classList.add('err');
+    };
+    ws.onmessage = (ev) => {
+      term.write(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data));
+    };
 
-    term.onData((data) => { if (ws.readyState === 1) ws.send(data); });
-    term.onBinary((data) => { if (ws.readyState === 1) ws.send(data); });
+    term.onData((data) => {
+      if (ws.readyState === 1) ws.send(data);
+    });
+    term.onBinary((data) => {
+      if (ws.readyState === 1) ws.send(data);
+    });
 
-    window.addEventListener('resize', () => fit.fit());
+    window.addEventListener('resize', fitFont);
   </script>
 </body>
 </html>
