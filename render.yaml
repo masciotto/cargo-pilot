@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: cargo-pilot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node web/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
