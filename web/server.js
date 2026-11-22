@@ -37,7 +37,12 @@ wss.on('connection', (ws, req) => {
 
   const shell = process.execPath;
   const args = [path.join(__dirname, '..', 'game.js')];
-  const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' };
+  const env = {
+    ...process.env,
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor',
+    CP_WEB: '1',
+  };
 
   const term = pty.spawn(shell, args, {
     name: 'xterm-256color',
@@ -47,8 +52,24 @@ wss.on('connection', (ws, req) => {
     env,
   });
 
+  // Estrae messaggi di scena (OSC CP) e li inoltra come JSON;
+  // il resto va al terminale come prima.
+  const OSC_RE = /\x1b\]1337;CP;([\s\S]*?)\x07/g;
   term.onData((data) => {
-    if (ws.readyState === ws.OPEN) ws.send(data);
+    if (ws.readyState !== ws.OPEN) return;
+    let last = 0;
+    let m;
+    OSC_RE.lastIndex = 0;
+    while ((m = OSC_RE.exec(data)) !== null) {
+      if (m.index > last) ws.send(data.slice(last, m.index));
+      try {
+        ws.send(m[1]);
+      } catch (e) {
+        /* JSON malformato: scarta */
+      }
+      last = m.index + m[0].length;
+    }
+    if (last < data.length) ws.send(data.slice(last));
   });
 
   term.onExit(({ exitCode }) => {

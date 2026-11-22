@@ -39,6 +39,7 @@
     }
     header p { margin: 0; font-size: 11px; color: #8a93a2; }
     #term-wrap {
+      position: relative;
       width: 100%;
       max-width: 1200px;
       padding: 4px 8px;
@@ -55,6 +56,18 @@
       box-shadow: 0 8px 30px rgba(0,0,0,.45);
       display: inline-block;
       line-height: 1;
+    }
+    #flight-canvas {
+      display: none;
+      position: absolute;
+      left: 8px;
+      top: 4px;
+      z-index: 5;
+      border: 1px solid #2a3441;
+      border-radius: 6px;
+      background: #000;
+      box-shadow: 0 8px 30px rgba(0,0,0,.45);
+      image-rendering: auto;
     }
     footer {
       width: 100%;
@@ -135,7 +148,10 @@
     <h1>Cargo Pilot</h1>
     <p><span id="status">connessione…</span> · demo per PLAY</p>
   </header>
-  <div id="term-wrap"><div id="terminal"></div></div>
+  <div id="term-wrap">
+    <div id="terminal"></div>
+    <canvas id="flight-canvas" aria-label="scena di volo"></canvas>
+  </div>
   <footer>
     <div><code>←/→</code> assi · <code>↑/↓</code> prua/pitch · <code>SPAZIO</code> freni · <code>INVIO</code> menu · <code>Ctrl+C</code> esci</div>
     <div>7 voli nel mondo: Torino → Parigi → Londra → Casablanca → Dubai → Singapore → New York → Sydney.</div>
@@ -160,6 +176,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+  <script src="/flight.js"></script>
   <script>
     // Dimensione scelta PRIMA di connettere: il server fa spawn del PTY
     // con gli stessi cols/rows. Mai cambiarli dopo (il gioco legge all'avvio).
@@ -263,7 +280,24 @@
       statusEl.classList.add('err');
     };
     ws.onmessage = (ev) => {
-      term.write(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data));
+      const data = typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data);
+      // Messaggio di scena (JSON) vs dati terminale grezzi
+      if (typeof data === 'string' && data.charCodeAt(0) === 123 /* { */) {
+        try {
+          const msg = JSON.parse(data);
+          if (msg && msg.cp === 'scene') {
+            Flight.update(msg);
+            return;
+          }
+          if (msg && msg.cp === 'end') {
+            Flight.hide();
+            return;
+          }
+        } catch (e) {
+          /* non era JSON di scena: passa al terminale */
+        }
+      }
+      term.write(data);
     };
 
     function send(s) {
