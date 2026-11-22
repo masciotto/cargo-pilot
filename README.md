@@ -73,9 +73,10 @@ lib/
   data.js        sponsor, quiz, 7 livelli + aeroporti/piste
   ui.js          helper TUI (menu, box, sleep)
   engine.js      loop di fase: tasti, tick, chrome del frame
-  render.js      frame buffer ANSI 256 colori
-  sprites.js     aereo, nuvole, ostacoli, terreno
-  scene.js       proiezione prospettica della pista
+  render.js      framebuffer a celle + palette truecolor 24-bit
+  pixel.js       PixelCanvas RGB + encoder half-block (▀) per la scena
+  sprites.js     aereo, nuvole, ostacoli, terreno (pixel-art)
+  scene.js       cielo/pista/luci + drawSprite su PixelCanvas
   flight.js      sequenza decollo → crociera → arrivo → atterraggio
   takeoff.js     fase decollo (Vr, traverso, stallo)
   cruise.js      fase crociera (ostacoli, carburante, vento)

@@ -1,83 +1,125 @@
 'use strict';
-// Anteprime sprite: node tools/preview-sprites.js   (PLAIN=1 = senza colori)
-const { Frame } = require('../lib/render');
+// Anteprime sprite e scena: node tools/preview-sprites.js   (PLAIN=1 = senza colori)
+const { Frame, COLORS } = require('../lib/render');
+const { PixelCanvas, pack, ansiFg, ansiBg } = require('../lib/pixel');
 const S = require('../lib/sprites');
+const scene = require('../lib/scene');
 
-if (process.env.PLAIN) {
-  const orig = Frame.prototype.set;
-  Frame.prototype.set = function (x, y, ch, fg, bg) {
-    orig.call(this, x, y, ch, 0, 0);
-  };
+const W = 150;
+const H = 56;
+const plain = process.env.PLAIN === '1';
+
+const f = new Frame(W, H);
+
+function label(t, y) {
+  f.text(0, y, t, plain ? null : COLORS.yellow);
+  return y + 1;
 }
 
-const f = new Frame(80, 46);
-f.clear(0);
 let y = 0;
-const label = (t) => {
-  f.text(0, y, t, 226);
-  y += 1;
-};
-
-label('PLANE_SIDE (+ tail, windows, prop 4 fotogrammi)');
-S.drawSprite(f, S.PLANE_SIDE, 2, y, {});
-S.drawSprite(f, S.PLANE_SIDE_TAIL, 2, y, {});
-S.drawSprite(f, S.PLANE_SIDE_WINDOWS, 2, y, {});
-const p0 = S.PROP_FRAMES[0];
-for (const r of p0.rows) f.set(2 + p0.x, y + r, p0.ch, 244);
-S.PROP_FRAMES.forEach((p, i) => {
-  f.text(2 + 29 + i * 4, y + 2, '[' + p.rows.map(() => p.ch).join('') + ']', 244);
-});
-y += 7;
-
-label('REAR_PLANE bank -1 / 0 / +1');
+y = label('PLANE_REAR bank -1 / 0 / +1', y); y += 1;
 for (const b of [-1, 0, 1]) {
   const spr = S.REAR_PLANE[b];
-  const x0 = 2 + (b + 1) * 16;
-  S.drawSprite(f, spr, x0, y, {});
-  for (const l of S.rearNavLights(b)) f.set(x0 + l.x, y + l.y, '■', l.fg);
+  const pc = new PixelCanvas(spr.rows[0].length, spr.rows.length * 2);
+  pc.clear(0, 0, 0);
+  scene.drawSprite(pc, spr, 0, 0, {});
+  const cells = pc.toHalfBlockCells();
+  const x0 = 2 + (b + 1) * 48;
+  for (let r = 0; r < cells.length; r++) {
+    for (let c = 0; c < cells[r].length; c++) {
+      const cell = cells[r][c];
+      if (cell.ch === ' ') continue;
+      let fg = null, bg = null;
+      if (!plain) {
+        if (cell.fg !== null) fg = cell.fg;
+        if (cell.bg !== null) bg = cell.bg;
+      }
+      f.set(x0 + c, y + r, cell.ch, fg, bg);
+    }
+  }
 }
-y += 7;
+y += sprRows(S.REAR_PLANE[0]) + 2;
 
-label('CLOUDS big / mid / far');
-S.drawSprite(f, S.CLOUD_BIG, 2, y, {});
-S.drawSprite(f, S.CLOUD_MID, 32, y, {});
-S.drawSprite(f, S.CLOUD_FAR, 54, y, {});
-y += 7;
-label('STORM / BIRDS / FUEL / WIND');
-S.drawSprite(f, S.CLOUD_STORM, 2, y, {});
-S.drawSprite(f, S.BIRD_FLOCK, 32, y, {});
-S.drawSprite(f, S.FUEL_TANK, 42, y, {});
-S.drawSprite(f, S.WIND_GUST, 50, y, {});
-y += 7;
+y = label('PLANE_SIDE (crociera)', y); y += 1;
+{
+  const spr = S.PLANE_SIDE;
+  const pc = new PixelCanvas(spr.rows[0].length, spr.rows.length * 2);
+  pc.clear(0, 0, 0);
+  scene.drawSprite(pc, spr, 0, 0, {});
+  const cells = pc.toHalfBlockCells();
+  for (let r = 0; r < cells.length; r++) {
+    for (let c = 0; c < cells[r].length; c++) {
+      const cell = cells[r][c];
+      if (cell.ch === ' ') continue;
+      let fg = null, bg = null;
+      if (!plain) { if (cell.fg !== null) fg = cell.fg; if (cell.bg !== null) bg = cell.bg; }
+      f.set(2 + c, y + r, cell.ch, fg, bg);
+    }
+  }
+}
+y += S.PLANE_SIDE.rows.length + 2;
 
-label('MOUNTAINS h=4,5,6 (allineate al terreno)');
-S.MOUNTAINS.forEach((m, i) => S.drawSprite(f, m, 4 + i * 14, y + (6 - m.rows.length), {}));
-y += 8;
+y = label('CLOUDS big / mid / far / storm', y); y += 1;
+const clouds = [S.CLOUD_BIG, S.CLOUD_MID, S.CLOUD_FAR, S.CLOUD_STORM];
+let cx = 2;
+for (const spr of clouds) {
+  const pc = new PixelCanvas(spr.rows[0].length, spr.rows.length * 2);
+  pc.clear(0, 0, 0);
+  scene.drawSprite(pc, spr, 0, 0, {});
+  const cells = pc.toHalfBlockCells();
+  for (let r = 0; r < cells.length; r++) {
+    for (let c = 0; c < cells[r].length; c++) {
+      const cell = cells[r][c];
+      if (cell.ch === ' ') continue;
+      let fg = null, bg = null;
+      if (!plain) { if (cell.fg !== null) fg = cell.fg; if (cell.bg !== null) bg = cell.bg; }
+      f.set(cx + c, y + r, cell.ch, fg, bg);
+    }
+  }
+  cx += spr.rows[0].length + 2;
+}
+y += Math.max(...clouds.map(s => s.rows.length)) + 2;
 
-label('TERRAIN');
-for (const [name, t] of Object.entries(S.TERRAIN)) {
-  f.text(2, y, name.padEnd(8), 226);
-  f.fill(12, y, 14, 1, ' ', 0, t.surface);
-  f.fill(12, y + 1, 14, 1, ' ', 0, t.deep);
-  y += 2;
+y = label('OBSTACLES bird / flock / tank / gust', y); y += 1;
+const obs = [S.BIRD, S.BIRD_FLOCK, S.FUEL_TANK, S.WIND_GUST];
+let ox = 2;
+for (const spr of obs) {
+  const pc = new PixelCanvas(spr.rows[0].length, spr.rows.length * 2);
+  pc.clear(0, 0, 0);
+  scene.drawSprite(pc, spr, 0, 0, {});
+  const cells = pc.toHalfBlockCells();
+  for (let r = 0; r < cells.length; r++) {
+    for (let c = 0; c < cells[r].length; c++) {
+      const cell = cells[r][c];
+      if (cell.ch === ' ') continue;
+      let fg = null, bg = null;
+      if (!plain) { if (cell.fg !== null) fg = cell.fg; if (cell.bg !== null) bg = cell.bg; }
+      f.set(ox + c, y + r, cell.ch, fg, bg);
+    }
+  }
+  ox += spr.rows[0].length + 2;
+}
+y += 5 + 2;
+
+y = label('MOUNTAINS h=5,6,7', y); y += 1;
+let mx = 2;
+for (const m of S.MOUNTAINS) {
+  const pc = new PixelCanvas(m.rows[0].length, m.rows.length * 2);
+  pc.clear(0, 0, 0);
+  scene.drawSprite(pc, m, 0, 0, {});
+  const cells = pc.toHalfBlockCells();
+  for (let r = 0; r < cells.length; r++) {
+    for (let c = 0; c < cells[r].length; c++) {
+      const cell = cells[r][c];
+      if (cell.ch === ' ') continue;
+      let fg = null, bg = null;
+      if (!plain) { if (cell.fg !== null) fg = cell.fg; if (cell.bg !== null) bg = cell.bg; }
+      f.set(mx + c, y + r, cell.ch, fg, bg);
+    }
+  }
+  mx += m.rows[0].length + 2;
 }
 
-label('SCENA CRUISE -> stampata sotto come frame a parte');
-const sc = new Frame(74, 13);
-sc.clear(24);
-const skyCh = process.env.PLAIN ? '.' : ' ';
-const gndCh = process.env.PLAIN ? '~' : ' ';
-for (let r = 0; r < 6; r++) sc.fill(0, r, 74, 1, skyCh, 0, 18 + r * 2);
-sc.fill(0, 6, 74, 5, skyCh, 0, 31);
-sc.fill(0, 11, 74, 1, gndCh, 0, 28);
-sc.fill(0, 12, 74, 1, gndCh, 0, 22);
-S.drawSprite(sc, S.CLOUD_MID, 40, 2, {});
-S.drawSprite(sc, S.CLOUD_FAR, 8, 1, {});
-S.drawSprite(sc, S.CLOUD_BIG, 52, 6, {});
-S.drawSprite(sc, S.MOUNTAINS[2], 20, 6, {});
-S.drawSprite(sc, S.PLANE_SIDE, 8, 4, {});
-S.drawSprite(sc, S.PLANE_SIDE_TAIL, 8, 4, {});
-S.drawSprite(sc, S.PLANE_SIDE_WINDOWS, 8, 4, {});
-for (const r of S.PROP_FRAMES[0].rows) sc.set(8 + 25, 4 + r, S.PROP_FRAMES[0].ch, 244);
+f.render();
 
-process.stdout.write(f.toString() + '\n---\n' + sc.toString() + '\n');
+function sprRows(spr) { return spr.rows.length; }

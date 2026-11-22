@@ -7,8 +7,8 @@ const pty = require('node-pty');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
-const COLS = 80;
-const ROWS = 24;
+const COLS = 160;
+const ROWS = 42;
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
