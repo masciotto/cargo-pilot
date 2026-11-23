@@ -311,11 +311,60 @@
             Flight.hide();
             return;
           }
+          if (msg && msg.cp === 'save') {
+            Store.put(msg.data);
+            statusEl.textContent = 'partita salvata · ' + COLS + '×' + ROWS;
+            return;
+          }
+          if (msg && msg.cp === 'askload') {
+            Store.reply(msg.name);
+            return;
+          }
         } catch (e) {
           /* non era JSON di scena: passa al terminale */
         }
       }
       term.write(data);
+    };
+
+    // --- salvataggio nel browser (backup di quello del server) ---
+    // Se il server perde i file (redeploy), la pagina rimanda la partita al gioco.
+    function b64utf8(str) {
+      const bytes = new TextEncoder().encode(str);
+      let bin = '';
+      for (const b of bytes) bin += String.fromCharCode(b);
+      return btoa(bin);
+    }
+    const Store = {
+      put(data) {
+        try {
+          const name = String((data && data.name) || '').toUpperCase();
+          if (!name) return;
+          localStorage.setItem('cp_save_' + name, JSON.stringify(data));
+          let list = [];
+          try {
+            list = JSON.parse(localStorage.getItem('cp_index') || '[]');
+          } catch (e) {
+            list = [];
+          }
+          const c = (data && data.career) || {};
+          const row = { name, cash: c.cash || 0, flights: c.flights || 0, updated: Date.now() };
+          list = list.filter((r) => r.name !== name).concat([row]);
+          list.sort((a, b) => b.cash - a.cash);
+          localStorage.setItem('cp_index', JSON.stringify(list.slice(0, 20)));
+        } catch (e) {
+          /* storage pieno/disabilitato: niente */
+        }
+      },
+      reply(name) {
+        try {
+          const raw = localStorage.getItem('cp_save_' + String(name || '').toUpperCase());
+          if (!raw) return;
+          send('@@LOAD@@' + b64utf8(raw) + '\r');
+        } catch (e) {
+          /* nessun backup */
+        }
+      },
     };
 
     function send(s) {

@@ -5,6 +5,8 @@ const readline = require('readline');
 const ui = require('./lib/ui');
 const { SPONSORS, QUESTIONS, LEVELS, ILLEGAL } = require('./lib/data');
 const { fly, landingMultiplier } = require('./lib/flight');
+const saveLib = require('./lib/save');
+const bridge = require('./lib/bridge');
 
 const TOTAL = LEVELS.length;
 
@@ -46,14 +48,20 @@ function labelOf(q) {
 
 async function quizPhase(rl, level) {
   ui.section('DOCUMENTAZIONE - DOGANA DI ' + level.to);
-  console.log(ui.dim('Rispondi bene e otterrai uno sconto sulle tasse di destinazione.'));
+  console.log(
+    ui.dim(
+      'Domande di tasse, IVA, valuta e società: rispondi bene e otterrai uno sconto sulle tasse di destinazione.'
+    )
+  );
+  // Ogni volo pesca 4-6 domande dal tema del livello: stessa rotta, risposte diverse.
+  const pool = level.quiz.slice().sort(() => Math.random() - 0.5);
+  const n = Math.min(pool.length, 4 + (Math.random() < 0.5 ? 1 : 0) + (Math.random() < 0.4 ? 1 : 0));
+  const order = pool.slice(0, n);
   let ok = 0;
   let ko = 0;
-  // Ordine casuale: ogni volo pone domande diverse anche a parità di livello.
-  const order = level.quiz.slice().sort(() => Math.random() - 0.5);
-  for (const qi of order) {
-    const q = QUESTIONS[qi];
-    const idx = await ui.menu(rl, q.text, q.opts);
+  for (let i = 0; i < order.length; i++) {
+    const q = QUESTIONS[order[i]];
+    const idx = await ui.menu(rl, `Domanda ${i + 1}/${order.length} — ${q.text}`, q.opts);
     if (idx === q.ans) {
       ok += 1;
       console.log(ui.good('  Esatto!'));
@@ -64,7 +72,9 @@ async function quizPhase(rl, level) {
     console.log(ui.dim('  ' + q.why) + ui.RESET);
     await ui.sleep(250);
   }
-  const mult = Math.max(0.5, Math.min(1.5, 1 + (ko - ok) * 0.25));
+  const total = order.length;
+  const mult = Math.max(0.5, Math.min(1.5, 1 + ((ko - ok) / total) * 0.5));
+  console.log(ui.bold(`\n  Punteggio documenti: ${ok}/${total}`));
   const label =
     mult < 1
       ? ui.good(`SCONTO consulente: tassa x${mult.toFixed(2)}`)
@@ -151,6 +161,7 @@ async function customsPhase(rl, state, level, ctx) {
     const risk = riskOf(mode);
     caught = Math.random() * 100 < risk;
     state.stats.illegal += 1;
+    if (state.career) state.career.illegal += 1;
     console.log(ui.dim(`\n... controllo ai raggi X (rischio ${risk}%) ...`));
     await ui.sleep(700);
   }
@@ -167,6 +178,7 @@ async function customsPhase(rl, state, level, ctx) {
       state.wanted + (mode === 'contraband' ? (ctx.illegal ? ctx.illegal.wanted : 2) : 1)
     );
     state.stats.caught += 1;
+    if (state.career) state.career.caught += 1;
     console.log(ui.bad(`\n*** SEQUESTRO E MULTA: -${fine} € ***`));
     console.log(ui.bad(`Fedinazione penale: ricercato ${ui.stars(state.wanted)}`));
     if (mode === 'contraband') console.log(ui.dim('Il carico extra viene confiscato.'));
@@ -180,6 +192,11 @@ async function customsPhase(rl, state, level, ctx) {
     console.log(ui.dim('Ogni passaggio a vuoto ti avvicina alla cella.'));
   }
   state.cash += net;
+  if (state.career) {
+    state.career.flights += 1;
+    state.career.cash += net;
+    if (!caught) state.career.ok += 1;
+  }
 
   console.log('\n' + ui.dim('── RIEPILOGO VOLO ─────────────────────────────'));
   console.log(`  Valore contratto .... ${ctx.value} €`);
@@ -197,6 +214,7 @@ async function customsPhase(rl, state, level, ctx) {
     state.gameOver = true;
   }
   await ui.sleep(600);
+  return net;
 }
 
 async function playLevel(rl, state, level) {
@@ -287,6 +305,10 @@ async function playLevel(rl, state, level) {
     state.cash -= cost;
     state.hull = Math.max(state.hull, 30);
     state.stats.crash += 1;
+    if (state.career) {
+      state.career.flights += 1;
+      state.career.crashes += 1;
+    }
     const titles = {
       hull: 'SCHIANTO!',
       fuel: 'RIMASTO SENZA CARBURANTE!',
@@ -311,6 +333,7 @@ async function playLevel(rl, state, level) {
   if (flight.reason === 'cargo') {
     const fuelCost = Math.round(level.fuelCost * dep.fuelMult * (state.sponsor.fuel || 1));
     state.cash -= fuelCost;
+    if (state.career) state.career.flights += 1;
     ui.clear();
     ui.box(
       [
@@ -395,6 +418,7 @@ async function statusScreen(rl, state) {
       `Integrità: ${state.hull}% ${ui.bar(state.hull)}`,
       `Ricercato: ${ui.stars(state.wanted)}`,
       `Livelli completati: ${state.done}/${TOTAL}`,
+      `Carriera: ${state.career ? state.career.cash : 0} € · ${state.career ? state.career.flights : 0} voli · salvato`,
       '',
       repairMsg,
     ],
@@ -406,12 +430,18 @@ async function statusScreen(rl, state) {
 function ending(state) {
   ui.clear();
   const s = state.stats;
+  const c = state.career || { cash: 0, flights: 0, ok: 0, crashes: 0, illegal: 0, caught: 0 };
   const lines = [
     '',
     `Pilota: ${state.name}    Sponsor: ${state.sponsor.name}`,
     `Livelli: ${s.ok} completati, ${s.crash} disastri`,
     `Illegalità: ${s.illegal} tentate, ${s.caught} fallite`,
     `Liquidità finale: ${state.cash} €`,
+    '',
+    '--- CARRIERA (tutte le partite) ---',
+    `Guadagni accumulati: ${ui.bold(c.cash + ' €')}`,
+    `Voli: ${c.flights} · dogane superate: ${c.ok} · disastri: ${c.crashes}`,
+    `Contrabbando: ${c.illegal} tentativi · preso: ${c.caught}`,
     '',
   ];
 
@@ -469,53 +499,159 @@ function ending(state) {
   );
 }
 
+// Salva la partita sul server e (nel browser) ne manda una copia alla pagina,
+// che la tiene in localStorage: se Render azzera il disco, il gioco riparte
+// comunque da dove eri.
+function persist(state) {
+  const run =
+    !state.gameOver && state.done < TOTAL
+      ? {
+          sponsorId: state.sponsor.id,
+          cash: state.cash,
+          hull: state.hull,
+          wanted: state.wanted,
+          done: state.done,
+          stats: state.stats,
+        }
+      : null;
+  const payload = { run, career: state.career };
+  saveLib.save(state.name, payload);
+  if (bridge.active) {
+    bridge.emit({ cp: 'save', data: Object.assign({ name: state.name }, payload) });
+  }
+}
+
+function scoreboard() {
+  let rows = [];
+  try {
+    rows = saveLib.list().slice(0, 5);
+  } catch (e) {
+    rows = [];
+  }
+  if (!rows.length) return;
+  console.log('\n' + ui.bold('CLASSIFICA PILOTI') + ui.dim('  (guadagni di carriera)'));
+  rows.forEach((r, i) => {
+    const c = r.career || {};
+    const pad = (s, n) => String(s).padEnd(n);
+    console.log(
+      '  ' +
+        ui.info(String(i + 1) + '.') + ' ' +
+        pad(r.name, 14) +
+        String(c.cash || 0).padStart(7) + ' €  ' +
+        pad((c.ok || 0) + '/' + (c.flights || 0) + ' voli ok', 12) +
+        (c.caught ? ui.bad(c.caught + ' preso') : '')
+    );
+  });
+}
+
 async function main() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   ui.bindRL(rl);
 
   ui.titleScreen();
+  scoreboard();
   const name = await ui.ask(rl, '\nNOME PILOTA: ');
-  const pilot = !name || name === '__EOF__' ? 'ANONIMO' : name.toUpperCase();
+  const pilot = !name || name === '__EOF__' || name === '__LOAD__' ? 'ANONIMO' : name.toUpperCase();
 
-  const sponsorIdx = await ui.menu(
-    rl,
-    '\nSCEGLI IL TUO MAIN SPONSOR',
-    SPONSORS.map((s) => `${s.name} — ${s.tag} — ${s.perk}`)
-  );
-  const sponsor = SPONSORS[sponsorIdx];
+  // --- partita salvata sul server? ---
+  let existing = saveLib.load(pilot);
+  let resume = null;
+  let resumeCareer = null;
 
+  if (existing && existing.run) {
+    const r = existing.run;
+    const idx = await ui.menu(rl, `TROVATA PARTITA DI ${pilot}`, [
+      `RIPRENDI — livello ${r.done + 1}/${TOTAL} · ${r.cash} € · integrità ${r.hull}% · ricercato ${r.wanted}`,
+      'NUOVA PARTITA — riparti da zero (la carriera resta)',
+    ]);
+    if (idx === 0) {
+      resume = r;
+      resumeCareer = existing.career;
+    } else {
+      resumeCareer = existing.career;
+    }
+  } else if (bridge.active) {
+    // Nessun salvataggio sul server (magari Render ha azzerato il disco):
+    // chiedi alla pagina se ne ha uno in localStorage.
+    ui.armLoad();
+    bridge.emit({ cp: 'askload', name: pilot });
+  }
+
+  let sponsor = null;
+  if (!resume) {
+    const sponsorIdx = await ui.menu(
+      rl,
+      '\nSCEGLI IL TUO MAIN SPONSOR',
+      SPONSORS.map((s) => `${s.name} — ${s.tag} — ${s.perk}`)
+    );
+    if (sponsorIdx === -1) {
+      const ld = ui.takePendingLoad();
+      if (ld && ld.run && String(ld.name || '').toUpperCase() === pilot) {
+        resume = ld.run;
+        resumeCareer = ld.career;
+        console.log(
+          ui.good(
+            `\nPartita recuperata dal browser: livello ${resume.done + 1}/${TOTAL}, ${resume.cash} €.`
+          )
+        );
+        await ui.sleep(600);
+      } else {
+        sponsor = SPONSORS[0];
+      }
+    } else {
+      sponsor = SPONSORS[sponsorIdx];
+    }
+  } else if (!sponsor) {
+    sponsor = SPONSORS.find((s) => s.id === resume.sponsorId) || SPONSORS[0];
+  }
+
+  const career = Object.assign(saveLib.emptyCareer(), resumeCareer || existing?.career || {});
   const state = {
     name: pilot,
     sponsor,
-    cash: sponsor.cash,
-    hull: 100,
-    wanted: 0,
-    done: 0,
+    cash: resume ? resume.cash : sponsor.cash,
+    hull: resume ? resume.hull : 100,
+    wanted: resume ? resume.wanted : 0,
+    done: resume ? resume.done : 0,
     gameOver: false,
     ending: null,
-    stats: { ok: 0, crash: 0, illegal: 0, caught: 0 },
+    stats: resume
+      ? Object.assign({ ok: 0, crash: 0, illegal: 0, caught: 0 }, resume.stats || {})
+      : { ok: 0, crash: 0, illegal: 0, caught: 0 },
+    career,
   };
 
-  console.log(
-    ui.good(
-      `\nBenvenuto ${pilot}. Contratto firmato con ${sponsor.name}: ${sponsor.cash} € in cassa.`
-    )
-  );
+  if (resume) {
+    console.log(
+      ui.good(
+        `\nBentornato ${pilot}: riprendi il volo ${state.done + 1}/${TOTAL} con ${state.cash} € in cassa.`
+      )
+    );
+  } else {
+    console.log(
+      ui.good(
+        `\nBenvenuto ${pilot}. Contratto firmato con ${sponsor.name}: ${sponsor.cash} € in cassa.`
+      )
+    );
+  }
   await ui.sleep(700);
 
-  for (const level of LEVELS) {
+  for (let i = state.done; i < TOTAL; i++) {
+    const level = LEVELS[i];
     await playLevel(rl, state, level);
+    state.done = i + 1;
     if (state.gameOver) break;
-    state.done += 1;
     if (state.cash < 0) {
       state.ending = 'bankrupt';
       state.gameOver = true;
       break;
     }
-    if (level.n < TOTAL) await statusScreen(rl, state);
+    persist(state);
+    if (i < TOTAL - 1) await statusScreen(rl, state);
   }
 
   ending(state);
+  persist(state);
   await ui.ask(rl, '\nINVIO per uscire... ');
   rl.close();
 }

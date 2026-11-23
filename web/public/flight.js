@@ -31,6 +31,9 @@ const Flight = (() => {
   function show() {
     if (active) return;
     active = true;
+    lastT = 0;
+    parts.length = 0;
+    fxBanner = null;
     canvas.style.display = 'block';
     document.getElementById('terminal').style.visibility = 'hidden';
     resize();
@@ -47,8 +50,235 @@ const Flight = (() => {
   }
 
   function update(s) {
+    const prev = state;
     state = s;
     show();
+    detectEvents(prev, s);
+  }
+
+  /* ---------- effetti cinematografici ---------- */
+
+  const parts = [];
+  let fxBanner = null;
+  let smokeT = 0;
+  let vign = null;
+
+  function planePos(s) {
+    if (s.phase === 'cruise') {
+      const sc = W / (s.sceneW || 160);
+      const x = (s.planeX != null ? (s.planeX / (s.sceneW || 160)) * W : W * 0.08) + planeW(s) * 0.5;
+      const y = s.planeY != null && s.sceneH ? (s.planeY / s.sceneH) * H : H * 0.4;
+      return { x, y };
+    }
+    if (s.phase === 'landing') {
+      return { x: W * 0.5, y: H * 0.5 + (s.alt || 0) * 0.4 };
+    }
+    return { x: W * 0.5, y: H * 0.55 - (s.alt || 0) * (H * 0.04) };
+  }
+
+  function planeW(s) {
+    return Math.min(W * (s.phase === 'cruise' ? 0.32 : 0.3), 280);
+  }
+
+  function spawn(x, y, n, o) {
+    for (let i = 0; i < n; i++) {
+      const a =
+        o.angle != null ? o.angle + (Math.random() - 0.5) * (o.spread || Math.PI * 2) : Math.random() * Math.PI * 2;
+      const sp = (o.speed || 60) * (0.4 + Math.random() * 0.9);
+      parts.push({
+        x,
+        y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        age: 0,
+        life: (o.life || 0.6) * (0.6 + Math.random() * 0.7),
+        size: (o.size || 3) * (0.6 + Math.random() * 0.8),
+        col: o.col || '#ffd866',
+        grav: o.grav || 0,
+        drag: o.drag == null ? 0.88 : o.drag,
+        kind: o.kind || 'spark',
+      });
+    }
+    while (parts.length > 240) parts.shift();
+  }
+
+  function stepParts(dt) {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.age += dt;
+      if (p.age >= p.life) {
+        parts.splice(i, 1);
+        continue;
+      }
+      p.vy += p.grav * dt;
+      const d = Math.pow(p.drag, dt * 60);
+      p.vx *= d;
+      p.vy *= d;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+  }
+
+  function drawParts() {
+    for (const p of parts) {
+      const k = Math.max(0, 1 - p.age / p.life);
+      ctx.globalAlpha = p.kind === 'smoke' ? k * 0.55 : k;
+      ctx.fillStyle = p.col;
+      if (p.kind === 'smoke') {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * (1.6 - k * 0.6), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const s2 = p.size * (0.5 + k * 0.8);
+        ctx.fillRect(p.x - s2 / 2, p.y - s2 / 2, s2, s2);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function detectEvents(prev, s) {
+    if (!prev || !s) return;
+    const p = planePos(s);
+
+    // colpi: scintille (+ fumo se ha fatto male)
+    if (typeof s.hits === 'number' && s.hits > (prev.hits || 0)) {
+      const dmg = typeof s.hull === 'number' && s.hull < (prev.hull == null ? s.hull : prev.hull);
+      spawn(p.x, p.y, dmg ? 26 : 14, {
+        col: dmg ? '#ff8b6b' : '#ffe08a',
+        speed: dmg ? 200 : 130,
+        life: 0.55,
+        size: 3.4,
+        grav: 190,
+        drag: 0.85,
+      });
+      if (dmg) {
+        spawn(p.x, p.y, 8, { col: '#5a6470', speed: 55, life: 1.1, size: 9, grav: -26, drag: 0.9, kind: 'smoke' });
+      }
+    }
+
+    // tocco a terra: nube di polvere + flash di scintille
+    if (s.phase === 'landing' && prev.phase === 'landing' && prev.runPhase === 'approach' && s.runPhase === 'roll') {
+      const gy = Math.min(H - 26, H * 0.66);
+      spawn(p.x, gy, 34, { col: '#d9d0b4', speed: 160, life: 0.9, size: 6, grav: 70, drag: 0.87, kind: 'smoke' });
+      spawn(p.x, gy, 16, { col: '#fff3c4', speed: 190, life: 0.45, size: 3, grav: 160 });
+    }
+
+    // rotazione: fumo delle ruote
+    if (s.phase === 'takeoff' && prev.phase === 'takeoff' && prev.runPhase === 'roll' && s.runPhase === 'rotate') {
+      spawn(p.x, H * 0.66, 24, { col: '#dcd6c4', speed: 130, life: 0.75, size: 6, grav: 45, drag: 0.9, kind: 'smoke' });
+      spawn(p.x, H * 0.66, 10, { col: '#ffe9a8', speed: 150, life: 0.4, size: 2.6, grav: 120 });
+    }
+  }
+
+  function stepPassive(dt, s) {
+    if (!s) return;
+    // fumo dalla fusoliera se l'integrità è bassa
+    if (typeof s.hull === 'number' && s.hull < 45) {
+      smokeT -= dt;
+      if (smokeT <= 0) {
+        smokeT = 0.09;
+        const p = planePos(s);
+        spawn(p.x - planeW(s) * 0.3, p.y, 1, {
+          col: s.hull < 25 ? '#3a3f47' : '#6a707a',
+          speed: 34,
+          life: 1.3,
+          size: 7,
+          grav: -14,
+          drag: 0.94,
+          kind: 'smoke',
+        });
+      }
+    } else {
+      smokeT = 0;
+    }
+    stepParts(dt);
+  }
+
+  function applyShake(s) {
+    const mag = s.shake > 0 ? Math.min(11, 3 + s.shake * 12) : 0;
+    if (mag <= 0) return;
+    const dx = (Math.random() - 0.5) * mag;
+    const dy = (Math.random() - 0.5) * mag;
+    const m = mag + 2;
+    ctx.save();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(canvas, -m + dx, -m + dy, W + 2 * m, H + 2 * m);
+    ctx.restore();
+  }
+
+  function vignette() {
+    if (!vign || vign.w !== W || vign.h !== H) {
+      const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.32, W / 2, H / 2, Math.max(W, H) * 0.78);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.4)');
+      vign = { g, w: W, h: H };
+    }
+    ctx.fillStyle = vign.g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function speedLines(alpha, cx, cy) {
+    if (alpha <= 0.02) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,' + Math.min(0.55, alpha) + ')';
+    ctx.lineWidth = 2;
+    const n = 14;
+    const t = performance.now() / 1000;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + t * 0.6;
+      const r0 = Math.min(W, H) * (0.26 + ((i * 37) % 10) / 44);
+      const r1 = r0 + 42 + ((i * 53) % 60);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+      ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBanner(s, now) {
+    const b = s.banner;
+    if (!b || !(s.bannerT > 0)) {
+      fxBanner = null;
+      return;
+    }
+    if (!fxBanner || fxBanner.text !== b.text) {
+      fxBanner = { text: b.text, born: now };
+    }
+    const age = (now - fxBanner.born) / 1000;
+    const k = Math.min(1, age / 0.32);
+    const ease = 1 - Math.pow(1 - k, 3);
+    const fade = Math.min(1, s.bannerT / 0.35);
+    const scale = 0.72 + 0.28 * ease;
+    const fs = Math.max(20, Math.min(40, W * 0.085));
+    ctx.save();
+    ctx.globalAlpha = fade;
+    ctx.translate(W / 2, H * 0.33);
+    ctx.scale(scale, scale);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '800 ' + fs + 'px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillText(b.text, 3, 4);
+    ctx.fillStyle = b.color || '#ffd866';
+    ctx.fillText(b.text, 0, 0);
+    if (b.sub) {
+      ctx.font = '600 ' + Math.max(11, Math.round(fs * 0.4)) + 'px ui-monospace, Menlo, monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillText(b.sub, 0, fs * 0.75);
+    }
+    ctx.restore();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  function letterbox(s) {
+    if (!(s.slow > 0)) return;
+    const bar = Math.round(H * 0.07);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, bar);
+    ctx.fillRect(0, H - bar, W, bar);
   }
 
   /* ---------- disegno ---------- */
@@ -459,6 +689,9 @@ const Flight = (() => {
     const py = H * 0.52 - (s.alt || 0) * (H * 0.04) + (s.pitch || 0) * 2;
     rearPlane(px + pw * 0.5, py, pw, s.bank || 0, s.pitch || 0);
 
+    // linee di velocità: si accendono avvicinandosi a Vr
+    if (s.v && s.vr) speedLines(Math.max(0, (s.v / s.vr - 0.7) * 1.3), W * 0.5, hz);
+
     if (s.flash > 0) {
       ctx.fillStyle = s.flash > 0.2 ? 'rgba(239,35,60,0.22)' : 'rgba(244,162,97,0.15)';
       ctx.fillRect(0, 0, W, H);
@@ -737,18 +970,29 @@ const Flight = (() => {
     hudText(s);
   }
 
-  function draw() {
+  function draw(now) {
     if (!state) return;
     const s = state;
     if (s.phase === 'takeoff') drawTakeoff(s);
     else if (s.phase === 'landing') drawLanding(s);
     else if (s.phase === 'cruise') drawCruise(s);
     else clear();
+
+    drawParts();
+    applyShake(s);
+    vignette();
+    drawBanner(s, now);
+    letterbox(s);
   }
 
-  function loop() {
+  let lastT = 0;
+  function loop(ts) {
     if (!active) return;
-    draw();
+    const now = ts || performance.now();
+    const dt = lastT ? Math.min(0.05, (now - lastT) / 1000) : 0.016;
+    lastT = now;
+    stepPassive(dt, state);
+    draw(now);
     raf = requestAnimationFrame(loop);
   }
 

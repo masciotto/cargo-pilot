@@ -17,6 +17,12 @@ Apri `http://localhost:3210`: si apre un terminale xterm.js con il gioco.
 Ogni connessione avvia una partita nuova. `Ctrl+C` nel terminale esce dalla
 partita; chiudere la scheda chiude la sessione.
 
+**La partita è salvata** dopo ogni livello: sul server (`saves/NOME.json`) e in
+copia nel `localStorage` del browser. Se l'host azzera il disco (redeploy su
+Render), alla partita successiva il gioco chiede alla pagina di rimandare il
+backup e riprende da dove eri. In apertura compare la **classifica piloti**
+(guadagni di carriera, salvataggi in `saves/`).
+
 ---
 
 ## Gioca da terminale (senza server)
@@ -63,6 +69,23 @@ abbassano la tassa di dogana, atterraggio duro, salita storta o fuori pista la
 alzano e ammaccano l'aereo. Rispondere bene ai quiz (fase documenti) dà lo
 sconto consulente.
 
+### Quiz documenti
+
+Ogni dogana pesca **4-6 domande** dal tema del livello su un **pool di 40**
+domande di tasse, IVA, valuta, società e dogana (IVA, reverse charge, INCOTERMS,
+origine preferenziale, free zone, transfer pricing...). Il punteggio del volo
+`ok/total` scala il moltiplicatore delle tasse tra **x0.50 e x1.50**: domande
+giuste = sconto, sbagliate = supplemento. Stessa rotta, risposte diverse a ogni
+volo.
+
+### Effetti visivi
+
+Decollo, crociera e atterraggio sono cinematografici: scosse di schermo sui
+colpi, scintille e polvere, fumo dalla fusoliera quando l'integrità scende,
+linee di velocità in rotazione, banner grandi (TOUCHDOWN, STALLO, COLPO
+DURISSIMO...) e **rallentatore con barre letterbox** sul tocco a terra.
+Solo effetti visivi: niente audio né vibrazione.
+
 ### Traffico illegale
 
 Prima di ogni volo la sezione **TRAFFICO ILLEGALE — LIVELLO n** (opzionale)
@@ -84,15 +107,17 @@ rosso (bancarotta) o giro del mondo completato.
 ## Struttura
 
 ```
-game.js          orchestratore: menu, quiz, dogana, statistiche
+game.js          orchestratore: menu, quiz, dogana, statistiche, salvataggio
 lib/
-  data.js        sponsor, quiz, 7 livelli + aeroporti/piste
-  ui.js          helper TUI (menu, box, sleep)
+  data.js        sponsor, 40 quiz + 7 livelli + aeroporti/piste
+  ui.js          helper TUI (menu, box, sleep, caricamento backup)
+  save.js        salvataggio partita/carriera in saves/NOME.json
   engine.js      loop di fase: tasti, tick, chrome del frame
   render.js      framebuffer a celle + palette truecolor 24-bit
   pixel.js       PixelCanvas RGB + encoder half-block (▀) per la scena
   sprites.js     aereo, nuvole, ostacoli, terreno (pixel-art)
   scene.js       cielo/pista/luci + drawSprite su PixelCanvas
+  bridge.js      emit scene/fini in JSON sul terminale (CP_WEB=1)
   flight.js      sequenza decollo → crociera → arrivo → atterraggio
   takeoff.js     fase decollo (Vr, traverso, stallo)
   cruise.js      fase crociera (ostacoli, carburante, vento)
@@ -101,7 +126,7 @@ tools/
   preview-sprites.js   anteprima sprite/scena (PLAIN=1 per output pulito)
 web/
   server.js      express + ws + node-pty → terminale nel browser
-  public/        pagina xterm.js
+  public/        pagina xterm.js + renderer canvas + backup in localStorage
 ```
 
 ---
