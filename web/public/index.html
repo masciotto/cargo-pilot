@@ -101,18 +101,34 @@
     }
     body.touch #pad { display: flex; }
     body.touch footer { display: none; }
-    body.touch { padding-bottom: 130px; }
+    body.touch { padding-bottom: 178px; }
 
     .dpad {
       display: grid;
       grid-template-columns: repeat(3, 54px);
-      grid-template-rows: repeat(2, 50px);
-      gap: 6px;
+      grid-template-rows: repeat(3, 46px);
+      gap: 5px;
     }
     .dpad .up { grid-column: 2; grid-row: 1; }
     .dpad .left { grid-column: 1; grid-row: 2; }
-    .dpad .down { grid-column: 2; grid-row: 2; }
+    .dpad .down { grid-column: 2; grid-row: 3; }
     .dpad .right { grid-column: 3; grid-row: 2; }
+    .dpad .mid {
+      grid-column: 2;
+      grid-row: 2;
+      min-width: 0;
+      min-height: 0;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      background: #24303f;
+      border-color: #5a708a;
+      color: #ffd866;
+    }
+    .dpad .mid:active, .dpad .mid.on {
+      background: #ef233c;
+      border-color: #ef233c;
+      color: #fff;
+    }
 
     .sys {
       display: flex;
@@ -139,6 +155,7 @@
       color: #0b0f14;
       border-color: #ffd866;
     }
+    .dpad .k { min-height: 44px; }
     .k.num { min-width: 42px; min-height: 42px; font-size: 15px; }
     .k.wide { min-width: 86px; font-size: 13px; }
   </style>
@@ -153,16 +170,17 @@
     <canvas id="flight-canvas" aria-label="scena di volo"></canvas>
   </div>
   <footer>
-    <div><code>←/→</code> assi · <code>↑/↓</code> prua/pitch · <code>SPAZIO</code> freni · <code>INVIO</code> menu · <code>Ctrl+C</code> esci</div>
+    <div><code>▲</code> acceleratore (decollo) · <code>STACCA</code> tasto centrale = stacco da terra (<code>W</code>) · <code>←/→</code> equilibrio · <code>↑/↓</code> prua/pitch · <code>SPAZIO</code> freni · <code>INVIO</code> menu · <code>Ctrl+C</code> esci</div>
     <div>7 voli nel mondo: Torino → Parigi → Londra → Casablanca → Dubai → Singapore → New York → Sydney.</div>
   </footer>
 
   <div id="pad" aria-label="controlli touch">
     <div class="dpad">
-      <button class="k up" data-k="up" aria-label="su">▲</button>
+      <button class="k up" data-k="up" aria-label="accelera">▲</button>
       <button class="k left" data-k="left" aria-label="sinistra">◀</button>
-      <button class="k down" data-k="down" aria-label="giu">▼</button>
+      <button class="k mid" data-k="w" aria-label="stacca da terra / flare">STACCA</button>
       <button class="k right" data-k="right" aria-label="destra">▶</button>
+      <button class="k down" data-k="down" aria-label="giu">▼</button>
     </div>
     <div class="sys">
       <button class="k num" data-k="1">1</button>
@@ -248,7 +266,7 @@
       const maxW = Math.max(320, wrap.clientWidth - 20);
       const maxH = Math.max(
         200,
-        window.innerHeight - header.offsetHeight - (touch ? 140 : footer.offsetHeight) - 36
+        window.innerHeight - header.offsetHeight - (touch ? 180 : footer.offsetHeight) - 36
       );
       let best = 7;
       for (let s = 16; s >= 7; s -= 0.5) {
@@ -317,6 +335,7 @@
       down: '\x1b[B',
       right: '\x1b[C',
       left: '\x1b[D',
+      w: 'w',
       enter: '\r',
       space: ' ',
       1: '1',

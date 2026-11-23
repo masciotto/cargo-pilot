@@ -3,7 +3,7 @@
 
 const readline = require('readline');
 const ui = require('./lib/ui');
-const { SPONSORS, QUESTIONS, LEVELS } = require('./lib/data');
+const { SPONSORS, QUESTIONS, LEVELS, ILLEGAL } = require('./lib/data');
 const { fly, landingMultiplier } = require('./lib/flight');
 
 const TOTAL = LEVELS.length;
@@ -31,6 +31,7 @@ const QUALITY_LABEL = {
   hard: 'DURO',
   veryhard: 'MOLTO DURO',
   excursion: 'USCITA DI PISTA',
+  drift: 'SALITA STORTA',
   short: 'CORTO',
   long: 'LUNGO',
   overrun: 'SCORSO LA PISTA',
@@ -84,6 +85,9 @@ async function customsPhase(rl, state, level, ctx) {
       ui.dim('□'.repeat(5 - police)) +
       ` (${police}/5)   Ricercato: ${ui.stars(state.wanted)}`
   );
+  if (ctx.illegal) {
+    console.log(ui.hot('⚠ A BORDO: ' + ctx.illegal.name + ' — nascosto tra i colli dichiarati.'));
+  }
 
   let bribeCut = 0;
   const bribeCost = level.bribeCost;
@@ -111,15 +115,18 @@ async function customsPhase(rl, state, level, ctx) {
   }
 
   const riskOf = (mode) => {
-    const add = { undervalue: 14, contraband: 24, black: 34 }[mode] || 0;
+    let add = { undervalue: 14, contraband: 24, black: 34 }[mode] || 0;
+    // Il traffico illegale scelto al decollo pesa di più del contrabbando generico.
+    if (mode === 'contraband' && ctx.illegal) add = 8 + ctx.illegal.risk;
     return Math.min(95, police * 7 + state.wanted * 6 + add - bribeCut);
   };
 
+  const smuggle = ctx.illegal || level.smuggle;
   const halfFee = Math.round(ctx.fee / 2);
   const choice = await ui.menu(rl, 'COME DICHIARI IL CARICO?', [
     `Dichiarazione regolare — tassa ${ctx.fee} € — rischio 0%`,
     `Sottostima la fattura — tassa ${halfFee} € — rischio ~${riskOf('undervalue')}%`,
-    `Contrabbando: ${level.smuggle.label} — +${level.smuggle.gain} € — rischio ~${riskOf('contraband')}%`,
+    `Contrabbando: ${smuggle.label} — +${smuggle.gain} € — rischio ~${riskOf('contraband')}%`,
     `Vendita al nero — tassa 0 €, +10% sul ricavo — rischio ~${riskOf('black')}%`,
   ]);
   const mode = ['honest', 'undervalue', 'contraband', 'black'][choice];
@@ -131,7 +138,7 @@ async function customsPhase(rl, state, level, ctx) {
     feePaid = halfFee;
     illicit = ctx.fee - halfFee;
   } else if (mode === 'contraband') {
-    illicit = level.smuggle.gain;
+    illicit = smuggle.gain;
   } else if (mode === 'black') {
     const premium = Math.round(revenue * 0.1);
     illicit = ctx.fee + premium;
@@ -155,7 +162,10 @@ async function customsPhase(rl, state, level, ctx) {
   if (caught) {
     fine = Math.round((1000 + illicit * 2) * (state.sponsor.fine || 1));
     net = revenue - feePaid - fuelCost - airportFee - fine;
-    state.wanted = Math.min(5, state.wanted + (mode === 'contraband' ? 2 : 1));
+    state.wanted = Math.min(
+      5,
+      state.wanted + (mode === 'contraband' ? (ctx.illegal ? ctx.illegal.wanted : 2) : 1)
+    );
     state.stats.caught += 1;
     console.log(ui.bad(`\n*** SEQUESTRO E MULTA: -${fine} € ***`));
     console.log(ui.bad(`Fedinazione penale: ricercato ${ui.stars(state.wanted)}`));
@@ -197,10 +207,42 @@ async function playLevel(rl, state, level) {
     await ui.sleep(450);
   }
 
+  // --- sezione traffico illegale: cosa porti di nascosto (opzionale) ---
+  const illegalList = ILLEGAL[level.n] || [];
+  let illegal = null;
+  const illegalIdx = await ui.menu(
+    rl,
+    'SEZIONE TRAFFICO ILLEGALE — LIVELLO ' + level.n + ' (opzionale)',
+    ['No. Solo il contratto regolare: dormo tranquillo.'].concat(
+      illegalList.map(
+        (g) =>
+          `${g.name} — dogana +${g.gain} € — rischio +${g.risk}% — ricercato +${g.wanted}`
+      )
+    )
+  );
+  if (illegalIdx > 0 && illegalList[illegalIdx - 1]) {
+    illegal = illegalList[illegalIdx - 1];
+    console.log(
+      ui.hot(`\nA bordo: ${illegal.name}. In dogana vale +${illegal.gain} €, rischio +${illegal.risk}%.`)
+    );
+    console.log(ui.dim('Dichiara "Contrabbando" in dogana per incassarlo.'));
+    await ui.sleep(600);
+  }
+
   // Valori di mercato variabili: stessi listini di base, prezzi diversi ogni run.
+  // I chicchi di caffè sono un'esclusiva dello sponsor LAVAZZA: per tutti gli
+  // altri sponsor lo stesso contratto parte in colli/pallet.
+  const isLavazza = state.sponsor.id === 'lavazza';
   const cargoOpts = level.cargo.map((c) => {
     const m = 0.82 + Math.random() * 0.36;
-    return Object.assign({}, c, { value: Math.round((c.value * m) / 50) * 50 });
+    const base = Object.assign({}, c);
+    if (base.coffee && !isLavazza && base.alt) {
+      delete base.coffee;
+      Object.assign(base, base.alt);
+    }
+    delete base.alt;
+    base.value = Math.round((c.value * m) / 50) * 50;
+    return base;
   });
   const cargoIdx = await ui.menu(
     rl,
@@ -292,7 +334,7 @@ async function playLevel(rl, state, level) {
       `Volo ${level.from} → ${level.to} completato`,
       '',
       `  Decollo  ......... ${labelOf(flight.takeoff && flight.takeoff.quality)}`,
-      `  Crociera ........ ${cr.hits || 0} colpi, ${cr.tanks || 0} taniche, ${cr.duration || 0} s`,
+      `  Crociera ........ ${cr.hits || 0} colpi, ${cr.gusts || 0} raffiche, ${cr.tanks || 0} taniche, ${cr.duration || 0} s`,
       `  Atterraggio ..... ${labelOf(la.quality)} (touchdown ${la.touchAt || 0} m, margine ${la.margin || 0} m)`,
       `  Integrità ${flight.hull}%  ·  Carico ${flight.cond}%`,
       `  Pista: ${(flight.arrival || dep).name}`,
@@ -326,6 +368,7 @@ async function playLevel(rl, state, level) {
     quizMult: mult,
     landMult,
     arrivalName: (flight.arrival || dep).name,
+    illegal,
   });
 
   state.stats.ok += 1;

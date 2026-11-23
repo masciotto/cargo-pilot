@@ -626,7 +626,67 @@ const Flight = (() => {
         ctx.moveTo(x, y + h * 0.8);
         ctx.lineTo(x, y + h);
         ctx.stroke();
-      } else {
+      } else if (o.type === 'gust') {
+        // Scarica di vento: tre onde ciano con punta.
+        ctx.save();
+        ctx.strokeStyle = 'rgba(160,235,255,0.92)';
+        ctx.fillStyle = 'rgba(160,235,255,0.92)';
+        ctx.lineWidth = Math.max(2, h * 0.18);
+        ctx.lineCap = 'round';
+        for (let i = 0; i < 3; i++) {
+          const yy = y + h * (0.22 + i * 0.3);
+          ctx.beginPath();
+          ctx.moveTo(x - w * 0.5, yy);
+          ctx.bezierCurveTo(x - w * 0.15, yy - h * 0.2, x + w * 0.1, yy + h * 0.2, x + w * 0.3, yy);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x + w * 0.52, yy);
+          ctx.lineTo(x + w * 0.26, yy - h * 0.16);
+          ctx.lineTo(x + w * 0.26, yy + h * 0.16);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      } else if (o.type === 'chute') {
+        // Paracadutista: cupola + funicelli + sagoma.
+        const cx = x;
+        const topY = y + h * 0.18;
+        ctx.fillStyle = '#ff9f45';
+        ctx.beginPath();
+        ctx.ellipse(cx, topY, w * 0.45, h * 0.2, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f4f7fb';
+        ctx.beginPath();
+        ctx.ellipse(cx, topY, w * 0.15, h * 0.2, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#d9762b';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - w * 0.45, topY);
+        ctx.lineTo(cx + w * 0.45, topY);
+        ctx.stroke();
+        const bodyY = y + h * 0.66;
+        ctx.strokeStyle = 'rgba(225,235,245,0.9)';
+        ctx.lineWidth = 1;
+        for (const k of [-0.4, -0.14, 0.14, 0.4]) {
+          ctx.beginPath();
+          ctx.moveTo(cx + w * k, topY);
+          ctx.lineTo(cx, bodyY - h * 0.14);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#dfe7ef';
+        ctx.beginPath();
+        ctx.ellipse(cx, bodyY, w * 0.11, h * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#2a3441';
+        ctx.lineWidth = Math.max(1.5, w * 0.06);
+        ctx.beginPath();
+        ctx.moveTo(cx - w * 0.05, bodyY + h * 0.1);
+        ctx.lineTo(cx - w * 0.08, bodyY + h * 0.24);
+        ctx.moveTo(cx + w * 0.05, bodyY + h * 0.1);
+        ctx.lineTo(cx + w * 0.08, bodyY + h * 0.24);
+        ctx.stroke();
+      } else if (o.type !== 'tank') {
         // bird / default
         ctx.strokeStyle = '#2a2a2a';
         ctx.lineWidth = 2;

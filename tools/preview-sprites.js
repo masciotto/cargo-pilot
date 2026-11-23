@@ -6,7 +6,7 @@ const S = require('../lib/sprites');
 const scene = require('../lib/scene');
 
 const W = 150;
-const H = 56;
+const H = 72;
 const plain = process.env.PLAIN === '1';
 
 const f = new Frame(W, H);
@@ -80,8 +80,8 @@ for (const spr of clouds) {
 }
 y += Math.max(...clouds.map(s => s.rows.length)) + 2;
 
-y = label('OBSTACLES bird / flock / tank / gust', y); y += 1;
-const obs = [S.BIRD, S.BIRD_FLOCK, S.FUEL_TANK, S.WIND_GUST];
+y = label('OBSTACLES bird / flock / tank / gust / chute', y); y += 1;
+const obs = [S.BIRD, S.BIRD_FLOCK, S.FUEL_TANK, S.WIND_GUST, S.PARACHUTIST];
 let ox = 2;
 for (const spr of obs) {
   const pc = new PixelCanvas(spr.rows[0].length, spr.rows.length * 2);
@@ -99,7 +99,7 @@ for (const spr of obs) {
   }
   ox += spr.rows[0].length + 2;
 }
-y += 5 + 2;
+y += Math.max(...obs.map((s) => s.rows.length)) + 2;
 
 y = label('MOUNTAINS h=5,6,7', y); y += 1;
 let mx = 2;

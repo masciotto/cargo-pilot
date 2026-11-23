@@ -43,21 +43,37 @@ Ogni livello è un volo completo in tre fasi animate: **decollo**, **crociera**,
 quello di arrivo: pista lunga = comoda ma costosa, pista corta = vento più
 forte, diritti più bassi e meno margini.
 
+Dal browser tutti i comandi passano dal **pad** in basso (funziona anche senza
+tastiera): croce direzionale + tasto centrale + `▲` + `SPAZIO`.
+
 | Dove | Cosa fare |
 |---|---|
-| Menu, scelta aeroporti e quiz | scrivi il numero della voce (es. `2`) e `INVIO` |
+| Menu, scelta aeroporti, quiz e sezione traffico illegale | scrivi il numero della voce (es. `2`) e `INVIO` |
 | Mazzetta al doganiere | `s` per pagare, `N` (o `INVIO`) per rifiutare |
-| **Decollo** | `←`/`→` (o `A`/`D`) tieni l'asse contro il traverso; a **Vr** (lampeggio) premi `↑` (`W`) per staccare. Se superi la fine della pista esci dalla corsia |
-| **Crociera** | `↑`/`↓` (o `W`/`S`) schiva uccelli, tempeste e creste; le taniche verdi `+` riforniscono (il carburante brucia davvero) |
-| **Atterraggio — avvicinamento** | `↑`/`↓` regola la prua sul sentiero di 3° (PAPI: 2 bianche + 2 rosse = giusto), `←`/`→` il traverso; a terra più dolce è meglio |
-| **Atterraggio — rullaggio** | `SPAZIO` (o `S`) freni, `←`/`→` tieni l'asse: devi fermarti prima della fine pista |
+| **Decollo — corsia** | tieni premuto `▲` (pad) o `↑` per accelerare: la potenza è finita, devi prendere velocità. `←`/`→` (o `A`/`D`) tengono l'asse contro il traverso e contro le raffiche |
+| **Decollo — stacco** | a **Vr** (lampeggio) premi il **tasto centrale del pad** (`W`, o `SPAZIO`) per staccare. Prima della rotazione l'aereo vira da solo contro il traverso e perde quota: è normale, sta a te tenerlo dritto. Se superi la fine della pista esci dalla corsia |
+| **Crociera** (circa 1 minuto in più di volo) | `↑`/`↓` (pad `▲`/`▼`) per evitare uccelli, tempeste, creste e **paracadutisti**; le **scariche di vento** (onde) ti spingono in verticale: bilancia col tasto opposto. Le taniche verdi `+` riforniscono (il carburante brucia davvero) |
+| **Atterraggio — avvicinamento** | `↑`/`↓` regola la prua sul sentiero di 3° (PAPI: 2 bianche + 2 rosse = giusto), `←`/`→` il traverso; a terra più dolce è meglio. Premi `W` per il flare proprio prima del touchdown |
+| **Atterraggio — rullaggio** | `W`, `SPAZIO` (o `S`) freni, `←`/`→` tieni l'asse: devi fermarti prima della fine pista |
 | Riepilogo / "INVIO per continuare" | solo `INVIO` |
 | Uscire in qualsiasi momento | `Ctrl` + `C` |
 
 La qualità del volo entra nei conti: decollo perfetto e atterraggio morbido
-abbassano la tassa di dogana, atterraggio duro o fuori pista la alzano e
-ammaccano l'aereo. Rispondere bene ai quiz (fase documenti) dà lo sconto
-consulente.
+abbassano la tassa di dogana, atterraggio duro, salita storta o fuori pista la
+alzano e ammaccano l'aereo. Rispondere bene ai quiz (fase documenti) dà lo
+sconto consulente.
+
+### Traffico illegale
+
+Prima di ogni volo la sezione **TRAFFICO ILLEGALE — LIVELLO n** (opzionale)
+mostra le merci sbloccate da quel livello (i livelli 5-7 aprono anche i
+**contanti del paradiso fiscale**). Sceglierle aumenta la dogana di un
+bonus (`+€`), il rischio di perquisizione e le stelle di ricercato; in dogana
+dichiarale come **Contrabbando** per incassarle, oppure come **Contratto
+regolare** per non rischiare.
+
+I **chicchi di caffè sono un'esclusiva dello sponsor LAVAZZA**: con gli altri
+sponsor lo stesso contratto parte in **colli/pallet**.
 
 I 7 livelli: Torino → Parigi → Londra → Casablanca → Dubai → Singapore →
 New York → Sydney. Fine partita con 5 stelle di ricercato (arresto), cassa in

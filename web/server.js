@@ -6,7 +6,7 @@ const express = require('express');
 const pty = require('node-pty');
 const { WebSocketServer } = require('ws');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3210;
 const DEF_COLS = 160;
 const DEF_ROWS = 42;
 
