@@ -164,6 +164,10 @@
   <header>
     <h1>Cargo Pilot</h1>
     <p><span id="status">connessione…</span> · demo per PLAY</p>
+    <button id="audioBtn" type="button" aria-pressed="false"
+      style="appearance:none;border:1px solid #3a4657;border-radius:10px;background:#151b24;color:#e8edf4;font:600 13px/1 ui-monospace,Menlo,Consolas,monospace;padding:7px 11px;cursor:pointer;white-space:nowrap;">
+      🔊 Audio
+    </button>
   </header>
   <div id="term-wrap">
     <div id="terminal"></div>
@@ -431,6 +435,23 @@
 
     window.addEventListener('resize', fitFont);
     window.addEventListener('orientationchange', () => setTimeout(fitFont, 120));
+
+    // --- audio: al primo tocco parte l'audio; il tasto silenzia tutto ---
+    const audioBtn = document.getElementById('audioBtn');
+    function renderAudioBtn() {
+      const m = Flight.isMuted();
+      audioBtn.textContent = m ? '🔇 Audio OFF' : '🔊 Audio';
+      audioBtn.setAttribute('aria-pressed', String(m));
+      audioBtn.style.color = m ? '#8a93a2' : '#ffd866';
+      audioBtn.style.borderColor = m ? '#3a4657' : '#ffd866';
+    }
+    audioBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      Flight.ensureAudio();
+      Flight.toggleMute();
+      renderAudioBtn();
+    });
+    renderAudioBtn();
   </script>
 </body>
 </html>

@@ -20,10 +20,7 @@ const Flight = (() => {
     dpr = Math.min(2.5, window.devicePixelRatio || 1);
     const r = wrap.getBoundingClientRect();
     W = Math.max(320, Math.floor(r.width - 16));
-    // Su dispositivi touch il pad sta sotto il canvas: sottraiamo l'altezza
-    // del pad così l'HUD di volo non resta nascosto dietro i comandi.
-    const padH = document.body.classList.contains('touch') ? 170 : 0;
-    H = Math.max(200, Math.floor(r.height - 8 - padH));
+    H = Math.max(200, Math.floor(r.height - 8));
     canvas.width = Math.floor(W * dpr);
     canvas.height = Math.floor(H * dpr);
     canvas.style.width = W + 'px';
@@ -52,6 +49,9 @@ const Flight = (() => {
     cancelAnimationFrame(raf);
     canvas.style.display = 'none';
     document.getElementById('terminal').style.visibility = 'visible';
+    // Fine volo: se l'audio è già stato sbloccato ma la musica non era partita
+    // (primo tocco avvenuto in volo), parte ora ai menu.
+    if (audioStarted) sound.playMusicTrack();
   }
 
   function update(s) {
@@ -962,10 +962,10 @@ const Flight = (() => {
       }
     }
 
-    // aereo: larghezza allineata alla maschera di collisione (PLANE_SIDE = 36 celle)
-    // così hitbox e mesh coincidono e non si colpisce ciò che si è visibilmente schivato.
+    // aereo: larghezza originale del renderer (coerente con la maschera di
+    // collisione del server, che resta leggermente più corta = colpo gentile)
     const shake = s.shake > 0 ? (Math.random() < 0.5 ? -2 : 2) : 0;
-    const planeW = Math.min(36 * sc, 300);
+    const planeW = Math.min(W * 0.32, 280);
     const planeX = (s.planeX != null ? (s.planeX / (s.sceneW || 160)) * W : W * 0.08);
     const planeY = (s.planeY != null && s.sceneH
       ? (s.planeY / s.sceneH) * H
@@ -1010,9 +1010,12 @@ const Flight = (() => {
   /* ---------- audio: rumore dei motori in fase di comando/volo.
      La traccia Cargo-Nothing to Declare è inserita come asset ma NON viene
      suonata durante la fase di comando dell'aereo (per quella fase si userà
-     un'altra traccia che verrà fornita; per ora solo rumore dei motori). ---------- */
+     un'altra traccia che verrà fornita; per ora solo rumore dei motori).
+     I browser bloccano l'audio finché non c'è un gesto utente: l'AudioContext
+     e la musica partono al primo tocco/click sullo schermo. ---------- */
   const sound = (() => {
     let ctx = null, active = false, osc = null, eg = null, ns = null, ng = null;
+    let muted = false, musicEl = null, musicStarted = false;
     function Ctx() {
       if (!ctx) {
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -1021,12 +1024,16 @@ const Flight = (() => {
       }
       return ctx;
     }
+    function init() {
+      const C = Ctx();
+      if (C && C.state === 'suspended') C.resume();
+    }
+    function gainVal() { return muted ? 0 : 1; }
     function startEngine() {
       const C = Ctx(); if (!C || active) return;
-      // Rombio motore: oscillatore basso + rumore filtrato.
       osc = C.createOscillator(); osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(150, C.currentTime);
-      eg = C.createGain(); eg.gain.setValueAtTime(0.10, C.currentTime);
+      eg = C.createGain(); eg.gain.setValueAtTime(0.10 * gainVal(), C.currentTime);
       osc.connect(eg); eg.connect(C.destination); osc.start();
       const n = 2 * C.sampleRate;
       const buf = C.createBuffer(1, n, C.sampleRate);
@@ -1035,7 +1042,7 @@ const Flight = (() => {
       ns = C.createBufferSource(); ns.buffer = buf; ns.loop = true;
       const nf = C.createBiquadFilter(); nf.type = 'bandpass';
       nf.frequency.setValueAtTime(220, C.currentTime); nf.Q.setValueAtTime(5, C.currentTime);
-      ng = C.createGain(); ng.gain.setValueAtTime(0.07, C.currentTime);
+      ng = C.createGain(); ng.gain.setValueAtTime(0.07 * gainVal(), C.currentTime);
       ns.connect(nf); nf.connect(ng); ng.connect(C.destination); ns.start();
       active = true;
     }
@@ -1045,23 +1052,48 @@ const Flight = (() => {
       osc = eg = ns = ng = null; active = false;
     }
     function setThrust(t) {
-      if (eg) { const C = Ctx(); eg.gain.setTargetAtTime(0.10 + 0.20 * t, C.currentTime, 0.15); }
+      if (eg) { const C = Ctx(); eg.gain.setTargetAtTime(0.10 * gainVal() + 0.20 * t * gainVal(), C.currentTime, 0.15); }
     }
+    function toggleMute() {
+      muted = !muted;
+      const g = gainVal();
+      if (eg) { const C = Ctx(); eg.gain.setValueAtTime(0.10 * g, C.currentTime); }
+      if (ng) { const C = Ctx(); ng.gain.setValueAtTime(0.07 * g, C.currentTime); }
+      if (musicEl) musicEl.volume = muted ? 0 : 0.5;
+      return muted;
+    }
+    function isMuted() { return muted; }
     // Traccia musicale: disponibile ma esclusa espressamente dalla fase di comando/volo.
     function playMusicTrack() {
+      if (musicStarted) return;
+      musicStarted = true;
       const el = new window.Audio('audio/Cargo-Nothing to Declare.m4a.mp4');
-      el.loop = true; el.volume = 0.5;
+      el.loop = true; el.volume = muted ? 0 : 0.5;
+      musicEl = el;
       el.play().catch(() => {});
     }
-    return { startEngine, stopEngine, setThrust, playMusicTrack, isActive: () => active };
+    return { init, startEngine, stopEngine, setThrust, toggleMute, isMuted, playMusicTrack, isActive: () => active };
   })();
 
   let engineOn = false;
+  let audioStarted = false;
 
+  function ensureAudio() {
+    if (audioStarted) return;
+    audioStarted = true;
+    sound.init();
+    // Fuori dalla fase di comando/volo si può partire con la musica;
+    // durante il volo suona solo il motore (gestito da update/hide).
+    if (!state || (state.phase !== 'takeoff' && state.phase !== 'cruise' && state.phase !== 'landing')) {
+      sound.playMusicTrack();
+    }
+  }
+
+  window.addEventListener('pointerdown', ensureAudio);
   window.addEventListener('resize', () => {
     if (active) resize();
   });
 
   canvas.style.display = 'none';
-  return { update, hide, isActive: () => active };
+  return { update, hide, isActive: () => active, toggleMute: sound.toggleMute, isMuted: sound.isMuted, ensureAudio };
 })();
