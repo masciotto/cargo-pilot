@@ -20,7 +20,10 @@ const Flight = (() => {
     dpr = Math.min(2.5, window.devicePixelRatio || 1);
     const r = wrap.getBoundingClientRect();
     W = Math.max(320, Math.floor(r.width - 16));
-    H = Math.max(200, Math.floor(r.height - 8));
+    // Su dispositivi touch il pad sta sotto il canvas: sottraiamo l'altezza
+    // del pad così l'HUD di volo non resta nascosto dietro i comandi.
+    const padH = document.body.classList.contains('touch') ? 170 : 0;
+    H = Math.max(200, Math.floor(r.height - 8 - padH));
     canvas.width = Math.floor(W * dpr);
     canvas.height = Math.floor(H * dpr);
     canvas.style.width = W + 'px';
@@ -44,6 +47,8 @@ const Flight = (() => {
     if (!active) return;
     active = false;
     state = null;
+    engineOn = false;
+    sound.stopEngine();
     cancelAnimationFrame(raf);
     canvas.style.display = 'none';
     document.getElementById('terminal').style.visibility = 'visible';
@@ -54,6 +59,12 @@ const Flight = (() => {
     state = s;
     show();
     detectEvents(prev, s);
+    // Avvia il rumore dei motori all'inizio della fase di comando/volo.
+    if (s && (s.phase === 'takeoff' || s.phase === 'cruise' || s.phase === 'landing') && !engineOn) {
+      sound.startEngine();
+      engineOn = true;
+    }
+    if (s && sound.isActive()) sound.setThrust(Math.max(0, Math.min(1, (s.v || 0) / 80)));
   }
 
   /* ---------- effetti cinematografici ---------- */
@@ -199,12 +210,7 @@ const Flight = (() => {
     if (mag <= 0) return;
     const dx = (Math.random() - 0.5) * mag;
     const dy = (Math.random() - 0.5) * mag;
-    const m = mag + 2;
-    ctx.save();
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
-    ctx.drawImage(canvas, -m + dx, -m + dy, W + 2 * m, H + 2 * m);
-    ctx.restore();
+    ctx.translate(dx, dy);
   }
 
   function vignette() {
@@ -831,9 +837,11 @@ const Flight = (() => {
         ctx.closePath();
         ctx.fill();
       } else if (o.type === 'storm') {
+        // Nube di tempesta: disegnata sull'intero bounding box di collisione
+        // (w x h) così hitbox e mesh coincidono.
         ctx.fillStyle = 'rgba(60,60,80,0.85)';
         ctx.beginPath();
-        ctx.ellipse(x, y + h * 0.4, w * 0.7, h * 0.55, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + w * 0.5, y + h * 0.5, w * 0.5, h * 0.5, 0, 0, Math.PI * 2);
         ctx.fill();
         if (Math.floor((s.t || 0) * 8) % 3 === 0) {
           ctx.fillStyle = '#ffd166';
@@ -954,9 +962,10 @@ const Flight = (() => {
       }
     }
 
-    // aereo
+    // aereo: larghezza allineata alla maschera di collisione (PLANE_SIDE = 36 celle)
+    // così hitbox e mesh coincidono e non si colpisce ciò che si è visibilmente schivato.
     const shake = s.shake > 0 ? (Math.random() < 0.5 ? -2 : 2) : 0;
-    const planeW = Math.min(W * 0.32, 280);
+    const planeW = Math.min(36 * sc, 300);
     const planeX = (s.planeX != null ? (s.planeX / (s.sceneW || 160)) * W : W * 0.08);
     const planeY = (s.planeY != null && s.sceneH
       ? (s.planeY / s.sceneH) * H
@@ -979,10 +988,12 @@ const Flight = (() => {
     else clear();
 
     drawParts();
-    applyShake(s);
+    ctx.save();
+    applyShake(s);       // solo traslazione: niente riempimento nero sullo schermo
     vignette();
     drawBanner(s, now);
     letterbox(s);
+    ctx.restore();
   }
 
   let lastT = 0;
@@ -995,6 +1006,57 @@ const Flight = (() => {
     draw(now);
     raf = requestAnimationFrame(loop);
   }
+
+  /* ---------- audio: rumore dei motori in fase di comando/volo.
+     La traccia Cargo-Nothing to Declare è inserita come asset ma NON viene
+     suonata durante la fase di comando dell'aereo (per quella fase si userà
+     un'altra traccia che verrà fornita; per ora solo rumore dei motori). ---------- */
+  const sound = (() => {
+    let ctx = null, active = false, osc = null, eg = null, ns = null, ng = null;
+    function Ctx() {
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ctx = new AC();
+      }
+      return ctx;
+    }
+    function startEngine() {
+      const C = Ctx(); if (!C || active) return;
+      // Rombio motore: oscillatore basso + rumore filtrato.
+      osc = C.createOscillator(); osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(150, C.currentTime);
+      eg = C.createGain(); eg.gain.setValueAtTime(0.10, C.currentTime);
+      osc.connect(eg); eg.connect(C.destination); osc.start();
+      const n = 2 * C.sampleRate;
+      const buf = C.createBuffer(1, n, C.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      ns = C.createBufferSource(); ns.buffer = buf; ns.loop = true;
+      const nf = C.createBiquadFilter(); nf.type = 'bandpass';
+      nf.frequency.setValueAtTime(220, C.currentTime); nf.Q.setValueAtTime(5, C.currentTime);
+      ng = C.createGain(); ng.gain.setValueAtTime(0.07, C.currentTime);
+      ns.connect(nf); nf.connect(ng); ng.connect(C.destination); ns.start();
+      active = true;
+    }
+    function stopEngine() {
+      if (!active) return;
+      try { if (osc) osc.stop(); if (ns) ns.stop(); } catch (e) {}
+      osc = eg = ns = ng = null; active = false;
+    }
+    function setThrust(t) {
+      if (eg) { const C = Ctx(); eg.gain.setTargetAtTime(0.10 + 0.20 * t, C.currentTime, 0.15); }
+    }
+    // Traccia musicale: disponibile ma esclusa espressamente dalla fase di comando/volo.
+    function playMusicTrack() {
+      const el = new window.Audio('audio/Cargo-Nothing to Declare.m4a.mp4');
+      el.loop = true; el.volume = 0.5;
+      el.play().catch(() => {});
+    }
+    return { startEngine, stopEngine, setThrust, playMusicTrack, isActive: () => active };
+  })();
+
+  let engineOn = false;
 
   window.addEventListener('resize', () => {
     if (active) resize();

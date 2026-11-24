@@ -544,6 +544,35 @@ function scoreboard() {
   });
 }
 
+// ---------------- tutorial: decollo e atterraggio ----------------
+
+const TUTORIAL = [
+  '',
+  '  TUTORIAL DI VOLO',
+  '',
+  '  Ogni volo ha tre fasi: DECOLLO, CROCIERA, atterraggio.',
+  '',
+  '  DECOLLO — tieni ▲ (↑ / pad ▲) per aprire l’acceleratore e prendere velocità.',
+  '  A Vr (lampeggio "Vr RAGGIUNTO") premi il tasto centrale (W / STACCA) per staccare.',
+  '  Prima di Vr lo stallo è pericoloso. ←/→ (pad ◀/▶) tengono l’asse contro il traverso.',
+  '',
+  '  CROCIERA — ↑/↓ (pad ▲/▼) schivano uccelli, tempeste, paracadutisti.',
+  '  Le scariche di vento ti spingono in verticale: riallineati col tasto opposto.',
+  '  Le taniche verdi + riforniscono carburante.',
+  '',
+  '  atterraggio — avvicinamento: ↑/↓ regola la prua sul sentiero 3° (PAPI:',
+  '  2 bianche + 2 rosse = giusto), ←/→ il traverso. W = flare prima del tocco.',
+  '  Rullaggio: W/SPAZIO/S frenano, ←/→ tengono l’asse fino allo stop.',
+  '',
+  '  Premi INVIO per iniziare il primo volo.',
+];
+
+async function tutorialPhase(rl, state) {
+  ui.clear();
+  ui.box(TUTORIAL, 40);
+  await ui.ask(rl, '\nINVIO per iniziare il primo volo... ');
+}
+
 async function main() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   ui.bindRL(rl);
@@ -635,6 +664,8 @@ async function main() {
     );
   }
   await ui.sleep(700);
+
+  if (!resume) await tutorialPhase(rl, state);
 
   for (let i = state.done; i < TOTAL; i++) {
     const level = LEVELS[i];

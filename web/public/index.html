@@ -374,9 +374,9 @@
     term.onData((data) => send(data));
     term.onBinary((data) => send(data));
 
-    // Tocco sul terminale: porta a fuoco e mostra tastiera (menu/nome).
+    // Tocco sul terminale: niente focus forzato, così su telefono non compare
+    // la tastiera a coprire le indicazioni (i menu si navigano con il pad).
     const termEl = document.getElementById('terminal');
-    termEl.addEventListener('pointerdown', () => term.focus());
 
     // --- pad touch ---
     const SEQ = {
